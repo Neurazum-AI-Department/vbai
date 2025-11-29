@@ -1,0 +1,18 @@
+include LICENSE
+include README.md
+include requirements.txt
+include pyproject.toml
+
+recursive-include vbai *.py
+recursive-include vbai py.typed
+
+recursive-include examples *.py
+recursive-include tests *.py
+recursive-include docs *.rst *.py *.md
+
+prune __pycache__
+prune *.egg-info
+prune .git
+prune .github
+prune build
+prune dist
