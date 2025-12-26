@@ -52,25 +52,33 @@ class MultiTaskLoss(nn.Module):
     ) -> torch.Tensor:
         """
         Compute combined loss.
-        
+
         Args:
-            dementia_logits: Model predictions for dementia (B, num_dementia_classes)
-            tumor_logits: Model predictions for tumor (B, num_tumor_classes)
+            dementia_logits: Model predictions for dementia (B, num_dementia_classes) or None
+            tumor_logits: Model predictions for tumor (B, num_tumor_classes) or None
             dementia_labels: Ground truth dementia labels (B,)
             tumor_labels: Ground truth tumor labels (B,)
-        
+
         Returns:
             Combined weighted loss
         """
-        d_loss = self.dementia_loss(dementia_logits, dementia_labels)
-        t_loss = self.tumor_loss(tumor_logits, tumor_labels)
-        
-        # Handle NaN when all labels are ignored
-        if torch.isnan(d_loss):
-            d_loss = torch.tensor(0.0, device=dementia_logits.device)
-        if torch.isnan(t_loss):
-            t_loss = torch.tensor(0.0, device=tumor_logits.device)
-        
+        # Handle None logits for single-task models
+        if dementia_logits is not None:
+            d_loss = self.dementia_loss(dementia_logits, dementia_labels)
+            # Handle NaN when all labels are ignored
+            if torch.isnan(d_loss):
+                d_loss = torch.tensor(0.0, device=dementia_logits.device)
+        else:
+            d_loss = torch.tensor(0.0, device=tumor_logits.device if tumor_logits is not None else 'cpu')
+
+        if tumor_logits is not None:
+            t_loss = self.tumor_loss(tumor_logits, tumor_labels)
+            # Handle NaN when all labels are ignored
+            if torch.isnan(t_loss):
+                t_loss = torch.tensor(0.0, device=tumor_logits.device)
+        else:
+            t_loss = torch.tensor(0.0, device=dementia_logits.device if dementia_logits is not None else 'cpu')
+
         return self.dementia_weight * d_loss + self.tumor_weight * t_loss
 
 
@@ -154,9 +162,17 @@ class MultiTaskFocalLoss(nn.Module):
         tumor_labels: torch.Tensor
     ) -> torch.Tensor:
         """Compute combined focal loss."""
-        d_loss = self.dementia_loss(dementia_logits, dementia_labels)
-        t_loss = self.tumor_loss(tumor_logits, tumor_labels)
-        
+        # Handle None logits for single-task models
+        if dementia_logits is not None:
+            d_loss = self.dementia_loss(dementia_logits, dementia_labels)
+        else:
+            d_loss = torch.tensor(0.0, device=tumor_logits.device if tumor_logits is not None else 'cpu')
+
+        if tumor_logits is not None:
+            t_loss = self.tumor_loss(tumor_logits, tumor_labels)
+        else:
+            t_loss = torch.tensor(0.0, device=dementia_logits.device if dementia_logits is not None else 'cpu')
+
         return self.dementia_weight * d_loss + self.tumor_weight * t_loss
 
 
@@ -186,22 +202,27 @@ class UncertaintyWeightedLoss(nn.Module):
         tumor_labels: torch.Tensor
     ) -> torch.Tensor:
         """Compute uncertainty-weighted loss."""
-        d_loss = self.dementia_loss(dementia_logits, dementia_labels)
-        t_loss = self.tumor_loss(tumor_logits, tumor_labels)
-        
-        # Handle NaN
-        if torch.isnan(d_loss):
-            d_loss = torch.tensor(0.0, device=dementia_logits.device)
-        if torch.isnan(t_loss):
-            t_loss = torch.tensor(0.0, device=tumor_logits.device)
-        
-        # Weighted loss with uncertainty
-        precision_d = torch.exp(-self.log_var_dementia)
-        precision_t = torch.exp(-self.log_var_tumor)
-        
-        loss = (
-            precision_d * d_loss + self.log_var_dementia +
-            precision_t * t_loss + self.log_var_tumor
-        )
-        
-        return loss
+        # Handle None logits for single-task models
+        if dementia_logits is not None:
+            d_loss = self.dementia_loss(dementia_logits, dementia_labels)
+            # Handle NaN
+            if torch.isnan(d_loss):
+                d_loss = torch.tensor(0.0, device=dementia_logits.device)
+            # Weighted loss with uncertainty
+            precision_d = torch.exp(-self.log_var_dementia)
+            d_component = precision_d * d_loss + self.log_var_dementia
+        else:
+            d_component = torch.tensor(0.0, device=tumor_logits.device if tumor_logits is not None else 'cpu')
+
+        if tumor_logits is not None:
+            t_loss = self.tumor_loss(tumor_logits, tumor_labels)
+            # Handle NaN
+            if torch.isnan(t_loss):
+                t_loss = torch.tensor(0.0, device=tumor_logits.device)
+            # Weighted loss with uncertainty
+            precision_t = torch.exp(-self.log_var_tumor)
+            t_component = precision_t * t_loss + self.log_var_tumor
+        else:
+            t_component = torch.tensor(0.0, device=dementia_logits.device if dementia_logits is not None else 'cpu')
+
+        return d_component + t_component

@@ -73,14 +73,14 @@ class VisualizationManager:
     ) -> Optional[np.ndarray]:
         """
         Create visualization of model prediction.
-        
+
         Args:
             image: Input image
             prediction_result: Result from model.predict()
             save: Whether to save the visualization
             filename: Filename for saved image
             show: Whether to display the plot
-        
+
         Returns:
             Visualization as numpy array if not saving
         """
@@ -91,71 +91,87 @@ class VisualizationManager:
             img_np = np.array(image)
         else:
             img_np = image
-        
-        # Create figure
-        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-        
+
+        # Determine which tasks are active
+        has_dementia = prediction_result.dementia_class is not None
+        has_tumor = prediction_result.tumor_class is not None
+
+        # Calculate number of panels needed
+        num_panels = 1  # Original image always shown
+        if has_dementia:
+            num_panels += 1
+        if has_tumor:
+            num_panels += 1
+
+        # Create figure with appropriate number of panels
+        fig, axes = plt.subplots(1, num_panels, figsize=(5 * num_panels, 5))
+        if num_panels == 1:
+            axes = [axes]
+
+        panel_idx = 0
+
         # Original image
-        axes[0].imshow(img_np)
-        axes[0].set_title('Original')
-        axes[0].axis('off')
-        
-        # Dementia attention
-        if prediction_result.dementia_attention is not None:
-            dem_heatmap = self._create_heatmap(
-                prediction_result.dementia_attention,
-                img_np.shape[:2],
-                self.dementia_cmap
-            )
-            axes[1].imshow(img_np)
-            axes[1].imshow(dem_heatmap, alpha=self.alpha)
-            axes[1].set_title(
+        axes[panel_idx].imshow(img_np)
+        axes[panel_idx].set_title('Original')
+        axes[panel_idx].axis('off')
+        panel_idx += 1
+
+        # Dementia attention (if task is active)
+        if has_dementia:
+            if prediction_result.dementia_attention is not None:
+                dem_heatmap = self._create_heatmap(
+                    prediction_result.dementia_attention,
+                    img_np.shape[:2],
+                    self.dementia_cmap
+                )
+                axes[panel_idx].imshow(img_np)
+                axes[panel_idx].imshow(dem_heatmap, alpha=self.alpha)
+            else:
+                axes[panel_idx].imshow(img_np)
+            axes[panel_idx].set_title(
                 f'Dementia: {prediction_result.dementia_class}\n'
                 f'({prediction_result.dementia_confidence:.1%})'
             )
-        else:
-            axes[1].imshow(img_np)
-            axes[1].set_title(
-                f'Dementia: {prediction_result.dementia_class}\n'
-                f'({prediction_result.dementia_confidence:.1%})'
-            )
-        axes[1].axis('off')
-        
-        # Tumor attention
-        if prediction_result.tumor_attention is not None:
-            tum_heatmap = self._create_heatmap(
-                prediction_result.tumor_attention,
-                img_np.shape[:2],
-                self.tumor_cmap
-            )
-            axes[2].imshow(img_np)
-            axes[2].imshow(tum_heatmap, alpha=self.alpha)
-            axes[2].set_title(
+            axes[panel_idx].axis('off')
+            panel_idx += 1
+
+        # Tumor attention (if task is active)
+        if has_tumor:
+            if prediction_result.tumor_attention is not None:
+                tum_heatmap = self._create_heatmap(
+                    prediction_result.tumor_attention,
+                    img_np.shape[:2],
+                    self.tumor_cmap
+                )
+                axes[panel_idx].imshow(img_np)
+                axes[panel_idx].imshow(tum_heatmap, alpha=self.alpha)
+            else:
+                axes[panel_idx].imshow(img_np)
+            axes[panel_idx].set_title(
                 f'Tumor: {prediction_result.tumor_class}\n'
                 f'({prediction_result.tumor_confidence:.1%})'
             )
-        else:
-            axes[2].imshow(img_np)
-            axes[2].set_title(
-                f'Tumor: {prediction_result.tumor_class}\n'
-                f'({prediction_result.tumor_confidence:.1%})'
-            )
-        axes[2].axis('off')
-        
+            axes[panel_idx].axis('off')
+
         plt.tight_layout()
-        
+
         if save:
             if filename is None:
-                filename = f'vis_{prediction_result.dementia_class}_{prediction_result.tumor_class}.png'
+                parts = []
+                if has_dementia:
+                    parts.append(prediction_result.dementia_class)
+                if has_tumor:
+                    parts.append(prediction_result.tumor_class)
+                filename = f'vis_{"_".join(parts)}.png'
             save_path = self.output_dir / filename
             plt.savefig(save_path, dpi=150, bbox_inches='tight')
             print(f"Visualization saved to {save_path}")
-        
+
         if show:
             plt.show()
         else:
             plt.close()
-        
+
         return None
     
     def _tensor_to_numpy(self, tensor: torch.Tensor) -> np.ndarray:
@@ -194,7 +210,12 @@ class VisualizationManager:
         # Resize to target size
         from PIL import Image as PILImage
         attn_pil = PILImage.fromarray((attn * 255).astype(np.uint8))
-        attn_resized = attn_pil.resize((target_size[1], target_size[0]), PILImage.BILINEAR)
+        # Use Resampling.BILINEAR for PIL >= 10.0.0 compatibility
+        try:
+            resample_method = PILImage.Resampling.BILINEAR
+        except AttributeError:
+            resample_method = PILImage.BILINEAR  # Fallback for older PIL versions
+        attn_resized = attn_pil.resize((target_size[1], target_size[0]), resample_method)
         attn_np = np.array(attn_resized) / 255.0
         
         # Apply colormap
@@ -288,7 +309,12 @@ def create_attention_heatmap(
     
     # Resize attention to image size
     attn_pil = Image.fromarray((attn * 255).astype(np.uint8))
-    attn_resized = np.array(attn_pil.resize((img.shape[1], img.shape[0]))) / 255.0
+    # Use Resampling.BILINEAR for PIL >= 10.0.0 compatibility
+    try:
+        resample_method = Image.Resampling.BILINEAR
+    except AttributeError:
+        resample_method = Image.BILINEAR  # Fallback for older PIL versions
+    attn_resized = np.array(attn_pil.resize((img.shape[1], img.shape[0]), resample_method)) / 255.0
     
     # Apply colormap
     cmap = cm.get_cmap(colormap)

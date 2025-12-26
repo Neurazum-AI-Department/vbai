@@ -13,7 +13,7 @@ Example:
     >>> trainer.fit(dataset)
 """
 
-__version__ = "0.1.3"
+__version__ = "0.1.9"
 __author__ = "Neurazum"
 
 # Models
@@ -62,7 +62,8 @@ def load(path: str, device: str = 'cpu'):
     checkpoint = torch.load(path, map_location=device, weights_only=False)
     config = checkpoint.get('config', {})
     variant = config.get('variant', 'q')
-    model = MultiTaskBrainModel(variant=variant)
+    tasks = config.get('tasks', ['dementia', 'tumor'])
+    model = MultiTaskBrainModel(variant=variant, tasks=tasks)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.to(device)
     model.eval()

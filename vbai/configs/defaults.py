@@ -13,9 +13,10 @@ from pathlib import Path
 class ModelConfig:
     """
     Model configuration.
-    
+
     Args:
         variant: Model variant ('f' for fast, 'q' for quality)
+        tasks: List of tasks to enable ('dementia', 'tumor', or both)
         num_dementia_classes: Number of dementia classes
         num_tumor_classes: Number of tumor classes
         use_edge_branch: Whether to use edge detection branch
@@ -23,15 +24,35 @@ class ModelConfig:
         image_size: Input image size
     """
     variant: Literal['f', 'q'] = 'q'
+    tasks: List[str] = field(default_factory=lambda: ['dementia', 'tumor'])
     num_dementia_classes: int = 6
     num_tumor_classes: int = 4
     use_edge_branch: bool = True
     dropout: float = 0.5
     image_size: int = 224
-    
+
     # Advanced options
     attention_reduction: int = 16
     backbone_pretrained: bool = False
+
+    def __post_init__(self):
+        """Validate tasks configuration."""
+        valid_tasks = {'dementia', 'tumor'}
+        for task in self.tasks:
+            if task not in valid_tasks:
+                raise ValueError(f"Invalid task '{task}'. Valid tasks: {valid_tasks}")
+        if not self.tasks:
+            raise ValueError("At least one task must be specified")
+
+    @property
+    def has_dementia(self) -> bool:
+        """Check if dementia task is enabled."""
+        return 'dementia' in self.tasks
+
+    @property
+    def has_tumor(self) -> bool:
+        """Check if tumor task is enabled."""
+        return 'tumor' in self.tasks
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""

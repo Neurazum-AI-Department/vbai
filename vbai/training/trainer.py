@@ -191,89 +191,103 @@ class Trainer:
     def _train_epoch(self, loader: DataLoader, verbose: int) -> Dict[str, float]:
         """Train for one epoch."""
         self.model.train()
-        
+
         total_loss = 0.0
         dementia_correct = 0
         dementia_total = 0
         tumor_correct = 0
         tumor_total = 0
-        
+
+        # Check which tasks are enabled
+        has_dementia = getattr(self.model, 'has_dementia', True)
+        has_tumor = getattr(self.model, 'has_tumor', True)
+
         for batch_idx, (images, dementia_labels, tumor_labels) in enumerate(loader):
             images = images.to(self.device)
             dementia_labels = dementia_labels.to(self.device)
             tumor_labels = tumor_labels.to(self.device)
-            
+
             # Forward pass
             self.optimizer.zero_grad()
             dementia_logits, tumor_logits = self.model(images)
-            
+
             # Compute loss
             loss = self.loss_fn(dementia_logits, tumor_logits, dementia_labels, tumor_labels)
-            
+
             # Backward pass
             loss.backward()
             self.optimizer.step()
-            
+
             # Metrics
             total_loss += loss.item()
-            
-            # Dementia accuracy (ignore -1 labels)
-            d_mask = dementia_labels >= 0
-            if d_mask.sum() > 0:
-                d_pred = dementia_logits[d_mask].argmax(dim=1)
-                dementia_correct += (d_pred == dementia_labels[d_mask]).sum().item()
-                dementia_total += d_mask.sum().item()
-            
-            # Tumor accuracy
-            t_mask = tumor_labels >= 0
-            if t_mask.sum() > 0:
-                t_pred = tumor_logits[t_mask].argmax(dim=1)
-                tumor_correct += (t_pred == tumor_labels[t_mask]).sum().item()
-                tumor_total += t_mask.sum().item()
-        
-        return {
-            'loss': total_loss / len(loader),
-            'dementia_acc': dementia_correct / max(dementia_total, 1),
-            'tumor_acc': tumor_correct / max(tumor_total, 1),
-        }
-    
-    def _validate(self, loader: DataLoader) -> Dict[str, float]:
-        """Validate the model."""
-        self.model.eval()
-        
-        total_loss = 0.0
-        dementia_correct = 0
-        dementia_total = 0
-        tumor_correct = 0
-        tumor_total = 0
-        
-        with torch.no_grad():
-            for images, dementia_labels, tumor_labels in loader:
-                images = images.to(self.device)
-                dementia_labels = dementia_labels.to(self.device)
-                tumor_labels = tumor_labels.to(self.device)
-                
-                dementia_logits, tumor_logits = self.model(images)
-                loss = self.loss_fn(dementia_logits, tumor_logits, dementia_labels, tumor_labels)
-                
-                total_loss += loss.item()
-                
+
+            # Dementia accuracy (ignore -1 labels and None logits)
+            if has_dementia and dementia_logits is not None:
                 d_mask = dementia_labels >= 0
                 if d_mask.sum() > 0:
                     d_pred = dementia_logits[d_mask].argmax(dim=1)
                     dementia_correct += (d_pred == dementia_labels[d_mask]).sum().item()
                     dementia_total += d_mask.sum().item()
-                
+
+            # Tumor accuracy (ignore -1 labels and None logits)
+            if has_tumor and tumor_logits is not None:
                 t_mask = tumor_labels >= 0
                 if t_mask.sum() > 0:
                     t_pred = tumor_logits[t_mask].argmax(dim=1)
                     tumor_correct += (t_pred == tumor_labels[t_mask]).sum().item()
                     tumor_total += t_mask.sum().item()
-        
+
         return {
             'loss': total_loss / len(loader),
-            'dementia_acc': dementia_correct / max(dementia_total, 1),
-            'tumor_acc': tumor_correct / max(tumor_total, 1),
+            'dementia_acc': dementia_correct / max(dementia_total, 1) if has_dementia else 0.0,
+            'tumor_acc': tumor_correct / max(tumor_total, 1) if has_tumor else 0.0,
+        }
+    
+    def _validate(self, loader: DataLoader) -> Dict[str, float]:
+        """Validate the model."""
+        self.model.eval()
+
+        total_loss = 0.0
+        dementia_correct = 0
+        dementia_total = 0
+        tumor_correct = 0
+        tumor_total = 0
+
+        # Check which tasks are enabled
+        has_dementia = getattr(self.model, 'has_dementia', True)
+        has_tumor = getattr(self.model, 'has_tumor', True)
+
+        with torch.no_grad():
+            for images, dementia_labels, tumor_labels in loader:
+                images = images.to(self.device)
+                dementia_labels = dementia_labels.to(self.device)
+                tumor_labels = tumor_labels.to(self.device)
+
+                dementia_logits, tumor_logits = self.model(images)
+                loss = self.loss_fn(dementia_logits, tumor_logits, dementia_labels, tumor_labels)
+
+                total_loss += loss.item()
+
+                # Dementia accuracy (ignore -1 labels and None logits)
+                if has_dementia and dementia_logits is not None:
+                    d_mask = dementia_labels >= 0
+                    if d_mask.sum() > 0:
+                        d_pred = dementia_logits[d_mask].argmax(dim=1)
+                        dementia_correct += (d_pred == dementia_labels[d_mask]).sum().item()
+                        dementia_total += d_mask.sum().item()
+
+                # Tumor accuracy (ignore -1 labels and None logits)
+                if has_tumor and tumor_logits is not None:
+                    t_mask = tumor_labels >= 0
+                    if t_mask.sum() > 0:
+                        t_pred = tumor_logits[t_mask].argmax(dim=1)
+                        tumor_correct += (t_pred == tumor_labels[t_mask]).sum().item()
+                        tumor_total += t_mask.sum().item()
+
+        return {
+            'loss': total_loss / len(loader),
+            'dementia_acc': dementia_correct / max(dementia_total, 1) if has_dementia else 0.0,
+            'tumor_acc': tumor_correct / max(tumor_total, 1) if has_tumor else 0.0,
         }
     
     def _print_epoch(
@@ -318,6 +332,7 @@ class Trainer:
             'model_state_dict': self.model.state_dict(),
             'config': {
                 'variant': getattr(self.model, 'variant', 'q'),
+                'tasks': getattr(self.model, 'tasks', ['dementia', 'tumor']),
                 'num_dementia_classes': getattr(self.model, 'num_dementia_classes', 6),
                 'num_tumor_classes': getattr(self.model, 'num_tumor_classes', 4),
             },

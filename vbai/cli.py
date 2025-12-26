@@ -39,6 +39,9 @@ Examples:
     model_group = parser.add_argument_group('Model')
     model_group.add_argument('--variant', type=str, default='q', choices=['f', 'q'],
                             help='Model variant: f=fast, q=quality (default: q)')
+    model_group.add_argument('--tasks', type=str, nargs='+', default=['dementia', 'tumor'],
+                            choices=['dementia', 'tumor'],
+                            help='Tasks to train: dementia, tumor, or both (default: both)')
     model_group.add_argument('--dropout', type=float, default=0.5,
                             help='Dropout rate (default: 0.5)')
     
@@ -83,20 +86,28 @@ Examples:
     print("=" * 60)
     print(f"Device: {device}")
     print(f"Variant: {args.variant}")
+    print(f"Tasks: {', '.join(args.tasks)}")
     print(f"Epochs: {args.epochs}")
     print(f"Batch size: {args.batch_size}")
     print(f"Learning rate: {args.lr}")
     print("=" * 60)
-    
-    # Check data paths
+
+    # Validate task and data path consistency
+    if 'dementia' in args.tasks and args.dementia_path is None:
+        print("Error: --dementia_path required when training dementia task")
+        sys.exit(1)
+    if 'tumor' in args.tasks and args.tumor_path is None:
+        print("Error: --tumor_path required when training tumor task")
+        sys.exit(1)
     if args.dementia_path is None and args.tumor_path is None:
         print("Error: At least one of --dementia_path or --tumor_path required")
         sys.exit(1)
-    
+
     # Create model
     print("\nCreating model...")
     model = vbai.MultiTaskBrainModel(
         variant=args.variant,
+        tasks=args.tasks,
         dropout=args.dropout
     )
     

@@ -4,23 +4,23 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-1.9+-red.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A PyTorch-based deep learning library for multi-task brain MRI analysis. Train models for simultaneous dementia classification and brain tumor detection with just a few lines of code.
+A PyTorch-based deep learning library for multi-task brain MRI analysis. Train models for dementia classification, brain tumor detection, or both simultaneously with just a few lines of code.
 
 ## Features
 
-- 🧠 **Multi-Task Learning**: Simultaneous dementia and tumor classification
-- ⚡ **Easy to Use**: Keras-like API for quick training
-- 🎯 **Dual Attention**: Task-specific attention mechanisms
-- 📊 **Visualization**: Built-in attention heatmap visualization
-- 🔧 **Configurable**: YAML/JSON configuration support
-- 📦 **Production Ready**: Export and deploy trained models
+- **Flexible Task Selection**: Train for dementia only, tumor only, or both simultaneously
+- **Easy to Use**: Keras-like API for quick training
+- **Task-Specific Attention**: Separate attention mechanisms for each task
+- **Visualization**: Built-in attention heatmap visualization (adapts to active tasks)
+- **Configurable**: YAML/JSON configuration support
+- **Production Ready**: Export and deploy trained models
 
 ## Supported Classifications
 
 **Dementia (6 classes):**
 - AD Alzheimer's Disease
 - AD Mild Demented
-- AD Moderate Demented  
+- AD Moderate Demented
 - AD Very Mild Demented
 - CN Non-Demented (Cognitively Normal)
 - PD Parkinson's Disease
@@ -48,12 +48,12 @@ pip install -e .[dev]
 
 ## Quick Start
 
-### Training a Model
+### Training a Multi-Task Model (Both Dementia & Tumor)
 
 ```python
 import vbai
 
-# Create model
+# Create model for both tasks (default)
 model = vbai.MultiTaskBrainModel(variant='q')  # 'q' for quality, 'f' for fast
 
 # Prepare dataset
@@ -81,6 +81,35 @@ history = trainer.fit(
 trainer.save('brain_model.pt')
 ```
 
+### Training a Single-Task Model
+
+```python
+import vbai
+
+# Dementia only model
+dementia_model = vbai.MultiTaskBrainModel(
+    variant='q',
+    tasks=['dementia']  # Only dementia classification
+)
+
+# Tumor only model
+tumor_model = vbai.MultiTaskBrainModel(
+    variant='q',
+    tasks=['tumor']  # Only tumor detection
+)
+
+# Dataset for single task
+dementia_dataset = vbai.UnifiedMRIDataset(
+    dementia_path='./data/dementia/train',
+    tumor_path=None,  # Not needed for dementia-only
+    is_training=True
+)
+
+# Train as usual
+trainer = vbai.Trainer(model=dementia_model, lr=0.0005)
+trainer.fit(train_data=dementia_dataset, epochs=10)
+```
+
 ### Making Predictions
 
 ```python
@@ -91,13 +120,18 @@ model = vbai.load('brain_model.pt', device='cuda')
 
 # Single image prediction
 result = model.predict('brain_scan.jpg')
-print(f"Dementia: {result.dementia_class} ({result.dementia_confidence:.1%})")
-print(f"Tumor: {result.tumor_class} ({result.tumor_confidence:.1%})")
+
+# Multi-task model returns both predictions
+if result.dementia_class:
+    print(f"Dementia: {result.dementia_class} ({result.dementia_confidence:.1%})")
+if result.tumor_class:
+    print(f"Tumor: {result.tumor_class} ({result.tumor_confidence:.1%})")
 
 # With attention visualization
 result = model.predict('brain_scan.jpg', return_attention=True)
 vis = vbai.VisualizationManager()
 vis.visualize('brain_scan.jpg', result, save=True)
+# Visualization adapts to show only active task panels
 ```
 
 ### Using Callbacks
@@ -132,6 +166,7 @@ config = vbai.get_default_config('quality')  # 'default', 'fast', 'quality', 'de
 # Or customize
 model_config = vbai.ModelConfig(
     variant='q',
+    tasks=['dementia', 'tumor'],  # Choose which tasks to enable
     dropout=0.3,
     use_edge_branch=True
 )
@@ -148,12 +183,52 @@ model_config.save('model_config.yaml')
 loaded_config = vbai.ModelConfig.load('model_config.yaml')
 ```
 
+## Command Line Interface
+
+### Training
+
+```bash
+# Train both tasks
+vbai-train --dementia_path ./data/dementia --tumor_path ./data/tumor --epochs 10
+
+# Train dementia only
+vbai-train --dementia_path ./data/dementia --tasks dementia --epochs 10
+
+# Train tumor only
+vbai-train --tumor_path ./data/tumor --tasks tumor --epochs 10
+
+# Advanced options
+vbai-train --dementia_path ./data/dementia --tumor_path ./data/tumor \
+    --variant q --tasks dementia tumor --epochs 20 --batch_size 16 --lr 0.0001
+```
+
+### Prediction
+
+```bash
+# Make prediction
+vbai-predict --model brain_model.pt --image brain_scan.jpg
+
+# With visualization
+vbai-predict --model brain_model.pt --image brain_scan.jpg --visualize --output result.png
+
+# JSON output
+vbai-predict --model brain_model.pt --image brain_scan.jpg --json
+```
+
 ## Model Variants
 
 | Variant | Layers | Channels | Speed | Accuracy |
 |---------|--------|----------|-------|----------|
-| `f` (fast) | 3 | 32→64→128 | ⚡⚡⚡ | ⭐⭐ |
-| `q` (quality) | 4 | 64→128→256→512 | ⚡ | ⭐⭐⭐ |
+| `f` (fast) | 3 | 32-64-128 | Fast | Good |
+| `q` (quality) | 4 | 64-128-256-512 | Slower | Better |
+
+## Task Selection
+
+| Tasks Parameter | Description | Use Case |
+|-----------------|-------------|----------|
+| `['dementia', 'tumor']` | Both tasks (default) | Multi-task learning |
+| `['dementia']` | Dementia only | Specialized dementia detection |
+| `['tumor']` | Tumor only | Specialized tumor detection |
 
 ## Dataset Structure
 
@@ -181,18 +256,20 @@ data/
         └── ...
 ```
 
+> **Note**: You only need the dataset for the task(s) you're training. For single-task training, only the relevant dataset directory is required.
+
 ## API Reference
 
 ### Core Classes
 
-- `MultiTaskBrainModel` - Main model class
-- `UnifiedMRIDataset` - Dataset for multi-task training
+- `MultiTaskBrainModel` - Main model class (supports single and multi-task)
+- `UnifiedMRIDataset` - Dataset for training (handles missing task data)
 - `Trainer` - Training loop manager
-- `VisualizationManager` - Attention heatmap visualization
+- `VisualizationManager` - Attention heatmap visualization (adapts to active tasks)
 
 ### Configuration
 
-- `ModelConfig` - Model architecture settings
+- `ModelConfig` - Model architecture settings (includes `tasks` parameter)
 - `TrainingConfig` - Training hyperparameters
 - `get_default_config()` - Preset configurations
 
@@ -209,7 +286,6 @@ See the `examples/` directory for complete examples:
 - `train_basic.py` - Basic training example
 - `train_advanced.py` - Advanced training with callbacks
 - `inference.py` - Model inference
-- `visualize.py` - Attention visualization
 
 ## Citation
 
