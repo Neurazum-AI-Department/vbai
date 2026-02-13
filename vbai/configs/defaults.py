@@ -3,7 +3,7 @@ Default Configurations for Vbai
 """
 
 from dataclasses import dataclass, field, asdict
-from typing import Optional, List, Dict, Any, Literal
+from typing import Optional, List, Dict, Any, Literal, Tuple
 import json
 import yaml
 from pathlib import Path
@@ -226,6 +226,184 @@ class FullConfig:
                 data = json.load(f)
         
         return cls.from_dict(data)
+
+
+@dataclass
+class Model3DConfig:
+    """
+    3D Model configuration for volumetric NIfTI processing.
+
+    Args:
+        variant: Model variant ('f' for fast, 'q' for quality)
+        tasks: Dict mapping task names to number of classes
+        in_channels: Number of input channels (1 for NIfTI)
+        input_shape: Target volume shape (D, H, W)
+        dropout: Dropout rate
+    """
+    variant: Literal['f', 'q'] = 'q'
+    tasks: Dict[str, int] = field(default_factory=lambda: {'alzheimer': 3})
+    in_channels: int = 1
+    input_shape: Tuple[int, int, int] = (96, 96, 96)
+    dropout: float = 0.5
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        d = asdict(self)
+        d['input_shape'] = list(d['input_shape'])
+        return d
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> 'Model3DConfig':
+        """Create from dictionary."""
+        valid = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}
+        if 'input_shape' in valid and isinstance(valid['input_shape'], list):
+            valid['input_shape'] = tuple(valid['input_shape'])
+        return cls(**valid)
+
+    def save(self, path: str):
+        """Save config to file."""
+        path = Path(path)
+        data = self.to_dict()
+        if path.suffix in ['.yaml', '.yml']:
+            with open(path, 'w') as f:
+                yaml.dump(data, f, default_flow_style=False)
+        else:
+            with open(path, 'w') as f:
+                json.dump(data, f, indent=2)
+
+    @classmethod
+    def load(cls, path: str) -> 'Model3DConfig':
+        """Load config from file."""
+        path = Path(path)
+        if path.suffix in ['.yaml', '.yml']:
+            with open(path) as f:
+                data = yaml.safe_load(f)
+        else:
+            with open(path) as f:
+                data = json.load(f)
+        return cls.from_dict(data)
+
+
+@dataclass
+class Training3DConfig:
+    """
+    3D Training configuration.
+
+    Defaults are tuned for 3D brain MRI (smaller batch size, lower lr).
+    """
+    epochs: int = 25
+    batch_size: int = 4
+    lr: float = 1e-4
+    weight_decay: float = 1e-4
+    scheduler: Optional[str] = 'cosine'
+    scheduler_patience: int = 5
+    scheduler_factor: float = 0.5
+    early_stopping_patience: int = 10
+    early_stopping_min_delta: float = 0.001
+    save_best_only: bool = True
+    checkpoint_dir: str = './checkpoints_3d'
+    checkpoint_monitor: str = 'val_loss'
+    val_split: float = 0.2
+    num_workers: int = 4
+    pin_memory: bool = True
+    augmentation_strength: str = 'medium'
+    device: str = 'auto'
+    mixed_precision: bool = True
+    gradient_clip: float = 1.0
+    log_interval: int = 5
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> 'Training3DConfig':
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+
+@dataclass
+class Full3DConfig:
+    """Combined 3D model and training configuration."""
+    model: Model3DConfig = field(default_factory=Model3DConfig)
+    training: Training3DConfig = field(default_factory=Training3DConfig)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'model': self.model.to_dict(),
+            'training': self.training.to_dict()
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> 'Full3DConfig':
+        return cls(
+            model=Model3DConfig.from_dict(d.get('model', {})),
+            training=Training3DConfig.from_dict(d.get('training', {}))
+        )
+
+    def save(self, path: str):
+        path = Path(path)
+        data = self.to_dict()
+        if path.suffix in ['.yaml', '.yml']:
+            with open(path, 'w') as f:
+                yaml.dump(data, f, default_flow_style=False)
+        else:
+            with open(path, 'w') as f:
+                json.dump(data, f, indent=2)
+
+    @classmethod
+    def load(cls, path: str) -> 'Full3DConfig':
+        path = Path(path)
+        if path.suffix in ['.yaml', '.yml']:
+            with open(path) as f:
+                data = yaml.safe_load(f)
+        else:
+            with open(path) as f:
+                data = json.load(f)
+        return cls.from_dict(data)
+
+
+def get_default_3d_config(preset: str = 'default') -> Full3DConfig:
+    """
+    Get a preset 3D configuration.
+
+    Args:
+        preset: 'default', 'fast', 'quality', or 'debug'
+
+    Returns:
+        Full3DConfig with preset values
+    """
+    presets = {
+        'default': Full3DConfig(
+            model=Model3DConfig(variant='q', input_shape=(96, 96, 96)),
+            training=Training3DConfig(epochs=25, batch_size=4, lr=1e-4)
+        ),
+        'fast': Full3DConfig(
+            model=Model3DConfig(variant='f', input_shape=(80, 80, 80)),
+            training=Training3DConfig(epochs=10, batch_size=6, lr=5e-4)
+        ),
+        'quality': Full3DConfig(
+            model=Model3DConfig(variant='q', input_shape=(96, 96, 96), dropout=0.3),
+            training=Training3DConfig(
+                epochs=50, batch_size=4, lr=5e-5,
+                augmentation_strength='strong',
+                early_stopping_patience=15
+            )
+        ),
+        'debug': Full3DConfig(
+            model=Model3DConfig(variant='f', input_shape=(64, 64, 64)),
+            training=Training3DConfig(
+                epochs=2, batch_size=2,
+                num_workers=0,
+                early_stopping_patience=0,
+                mixed_precision=False
+            )
+        ),
+    }
+
+    if preset not in presets:
+        available = ', '.join(presets.keys())
+        raise ValueError(f"Unknown 3D preset '{preset}'. Available: {available}")
+
+    return presets[preset]
 
 
 def get_default_config(preset: str = 'default') -> FullConfig:

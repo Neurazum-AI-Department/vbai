@@ -338,6 +338,34 @@ class MultiTaskBrainModel(nn.Module):
 
         return result
 
+    def push_to_hub(self, repo_id: str, **kwargs) -> str:
+        """
+        Push this model to HuggingFace Hub.
+
+        Args:
+            repo_id: Target repository (e.g., 'username/my-model')
+            **kwargs: Extra args passed to vbai.push_to_hub()
+
+        Returns:
+            URL of the uploaded model
+        """
+        from ..hub.hub_utils import push_to_hub
+        return push_to_hub(self, repo_id, **kwargs)
+
+    def export_onnx(self, output_path: str, **kwargs) -> str:
+        """
+        Export this model to ONNX format.
+
+        Args:
+            output_path: Path for the .onnx output file
+            **kwargs: Extra args passed to vbai.export_onnx()
+
+        Returns:
+            Path to the exported ONNX file
+        """
+        from ..export.onnx_export import export_onnx
+        return export_onnx(self, output_path, **kwargs)
+
     def __repr__(self):
         params = self.count_parameters()
         tasks_str = ', '.join(self.tasks)
