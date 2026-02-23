@@ -12,6 +12,10 @@ A PyTorch-based deep learning library for multi-task brain MRI analysis. Train m
 - **Flexible Task Selection**: Train for dementia only, tumor only, or both simultaneously
 - **Easy to Use**: Keras-like API for quick training
 - **Task-Specific Attention**: Separate attention mechanisms for each task
+- **MRI Artifact Simulation**: Bias field, ghosting, spike noise, Rician noise
+- **Elastic Deformation**: Anatomical variation simulation for 2D and 3D
+- **MixUp / CutMix**: Modern batch-level augmentation techniques
+- **AutoAugment**: Automatic MRI-specific augmentation policy
 - **HuggingFace Hub**: Share and download models via HuggingFace
 - **ONNX Export**: Production deployment for both 2D and 3D models
 - **Model Zoo**: Registry of pretrained model configurations
@@ -188,6 +192,42 @@ output = onnx_model.predict_nifti('brain_scan.nii.gz')
 probs = onnx_model.softmax(output)
 ```
 
+### Data Augmentation
+
+```python
+import vbai
+import numpy as np
+
+# ── MRI Artifact Simulation ──
+volume = np.random.rand(96, 96, 96).astype(np.float32)
+
+# Simulate individual artifacts
+volume = vbai.simulate_bias_field(volume, intensity=0.3)
+volume = vbai.simulate_ghosting(volume, num_ghosts=3, intensity=0.15)
+volume = vbai.simulate_rician_noise(volume, std=0.03)
+volume = vbai.simulate_spike_noise(volume, num_spikes=1, intensity=0.5)
+
+# Or apply random artifacts in one call
+volume = vbai.simulate_mri_artifacts(volume, p=0.5)
+
+# ── Elastic Deformation ──
+deformed_2d = vbai.elastic_deformation_2d(image_2d, alpha=50, sigma=5)
+deformed_3d = vbai.elastic_deformation_3d(volume, alpha=30, sigma=4)
+
+# ── MixUp / CutMix (batch-level, works with both 2D and 3D) ──
+mixed, labels_a, labels_b, lam = vbai.mixup(images, labels, alpha=0.2)
+loss = lam * criterion(model(mixed), labels_a) + (1-lam) * criterion(model(mixed), labels_b)
+
+mixed, labels_a, labels_b, lam = vbai.cutmix(images, labels, alpha=1.0)
+
+# ── AutoAugment (automatic MRI-specific policy) ──
+augmenter = vbai.MRIAutoAugment(mode='3d', num_policies=10)
+augmented_volume = augmenter(volume)
+
+augmenter_2d = vbai.MRIAutoAugment(mode='2d', num_policies=10)
+augmented_image = augmenter_2d(image_2d)
+```
+
 ### Using Callbacks
 
 ```python
@@ -311,6 +351,14 @@ data/alzheimer_3d/
 - `UnifiedMRIDataset` - 2D dataset (RGB images)
 - `NIfTIDataset` - 3D dataset (NIfTI volumes)
 - `UnifiedNIfTIDataset` - 3D multi-task dataset
+
+### Augmentation
+
+- `simulate_bias_field()` / `simulate_ghosting()` / `simulate_spike_noise()` / `simulate_rician_noise()` - MRI artifact simulation
+- `simulate_mri_artifacts()` - Combined random artifact application
+- `elastic_deformation_2d()` / `elastic_deformation_3d()` - Elastic deformation
+- `mixup()` / `cutmix()` - Batch-level augmentation (2D & 3D)
+- `MRIAutoAugment` - Automatic augmentation policy
 
 ### Hub & Export
 

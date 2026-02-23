@@ -19,7 +19,7 @@ Example (3D - NIfTI):
     >>> trainer.fit(train_loader, val_loader, epochs=25)
 """
 
-__version__ = "0.2.3"
+__version__ = "0.2.7"
 __author__ = "Neurazum"
 
 # ── 2D Models ──
@@ -53,6 +53,20 @@ from .data import (
     create_3d_dataloaders,
     get_3d_train_transforms,
     get_3d_val_transforms,
+)
+
+# ── Advanced Augmentation ──
+from .data import (
+    simulate_bias_field,
+    simulate_ghosting,
+    simulate_spike_noise,
+    simulate_rician_noise,
+    simulate_mri_artifacts,
+    elastic_deformation_2d,
+    elastic_deformation_3d,
+    mixup,
+    cutmix,
+    MRIAutoAugment,
 )
 
 # ── 2D Training ──
@@ -225,6 +239,11 @@ __all__ = [
     # 3D Data
     'NIfTIDataset', 'UnifiedNIfTIDataset', 'create_3d_dataloaders',
     'get_3d_train_transforms', 'get_3d_val_transforms',
+    # Advanced Augmentation
+    'simulate_bias_field', 'simulate_ghosting', 'simulate_spike_noise',
+    'simulate_rician_noise', 'simulate_mri_artifacts',
+    'elastic_deformation_2d', 'elastic_deformation_3d',
+    'mixup', 'cutmix', 'MRIAutoAugment',
     # 2D Training
     'Trainer', 'MultiTaskLoss', 'EarlyStopping', 'ModelCheckpoint',
     # 3D Training
