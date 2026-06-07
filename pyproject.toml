@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vbai"
-version = "0.2.7"
-description = "Visual Brain AI - Multi-task brain MRI analysis library"
+version = "1.2.2"
+description = "Visual Brain AI - Multi-task brain professional MRI analysis library"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
@@ -31,10 +31,13 @@ keywords = [
     "nifti",
     "3d-cnn",
     "volumetric",
-    "neuroimaging"
+    "neuroimaging",
+    "alzheimer",
+    "athropy",
+    "academic"
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
     "Intended Audience :: Healthcare Industry",
     "License :: OSI Approved :: MIT License",
